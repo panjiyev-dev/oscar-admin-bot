@@ -180,7 +180,7 @@ bot.on('message', async (msg) => {
     return;
   }
 
-  // Mahsulot yangilash - yangi logika
+  // Mahsulot yangilash
   if (text === "🔄 Mahsulotni yangilash") {
     try {
       const productsSnapshot = await db.collection('products').get();
@@ -200,10 +200,43 @@ bot.on('message', async (msg) => {
         },
       };
 
-      bot.sendMessage(chatId, "Qaysi mahsulotni yangilashni xohlaysiz? (Bir nechtasini inline tugmalar orqali tanlang):", inlineKeyboard);
+      bot.sendMessage(chatId, "Qaysi mahsulotni yangilashni xohlaysiz? (Inline tugmalardan tanlang):", inlineKeyboard);
     } catch (error) {
       bot.sendMessage(chatId, "❌ Mahsulotlarni olishda xato!");
     }
+    return;
+  }
+
+  // Update value (text message after field selection)
+  if (userState[chatId] && userState[chatId].step === 'update_value') {
+    const stateData = userState[chatId].data;
+    let value;
+    if (stateData.field.includes('price') || stateData.field === 'stock') {
+      if (!/^\d+$/.test(text) || parseInt(text) < 0) {
+        bot.sendMessage(chatId, "Musbat son kiriting!");
+        return;
+      }
+      value = parseInt(text);
+    } else if (stateData.field === 'discount') {
+      if (!/^\d+$/.test(text) || parseInt(text) < 0 || parseInt(text) > 100) {
+        bot.sendMessage(chatId, "0-100 orasida son kiriting!");
+        return;
+      }
+      value = parseInt(text);
+    } else {
+      bot.sendMessage(chatId, "Noto'g'ri maydon!");
+      userState[chatId].step = 'none';
+      return;
+    }
+
+    try {
+      await db.collection('products').doc(String(stateData.id)).update({ [stateData.field]: value });
+      bot.sendMessage(chatId, `✅ ${stateData.field} yangilandi: ${value}`, mainKeyboard);
+    } catch (error) {
+      bot.sendMessage(chatId, "❌ Yangilashda xato!");
+    }
+
+    userState[chatId].step = 'none';
     return;
   }
 
@@ -229,7 +262,7 @@ bot.on('message', async (msg) => {
     return;
   }
 
-  // Kategoriya qo'shish (oldingi kabi)
+  // Kategoriya qo'shish
   if (text === "📂 Kategoriya qo'shish") {
     userState[chatId] = { step: 'category_name', data: {} };
     bot.sendMessage(chatId, "1/3. Nomi:");
@@ -289,7 +322,7 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Callback query handling for update product
+// Callback query handling
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data;
@@ -343,8 +376,14 @@ bot.on('callback_query', async (callbackQuery) => {
   }
 
   if (data.startsWith('update_field_')) {
-    const [fieldType, productIdStr] = data.split('_', 3);
-    const productId = parseInt(productIdStr);
+    const parts = data.split('_');
+    if (parts.length < 4) {
+      bot.answerCallbackQuery(callbackQuery.id, { text: "Noto'g'ri tanlov!" });
+      return;
+    }
+    const fieldType = parts[2];  // priceBox, pricePiece, etc.
+    const productId = parseInt(parts[3]);
+
     const fieldMap = {
       'priceBox': 'Narx (karobka)',
       'pricePiece': 'Narx (dona)',
