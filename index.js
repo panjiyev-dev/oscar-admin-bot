@@ -24,12 +24,30 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 
 const userState = {}; // Foydalanuvchi holatini (step, data) saqlash
 
-// Tailwind ranglari ro'yxati (kategoriya uchun)
+// Tailwind ranglari va o'zbekcha nomlari (callback_data uchun klass, matn uchun o'zbekcha)
 const tailwindColors = [
-  'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500', 'bg-lime-500',
-  'bg-green-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500',
-  'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500',
-  'bg-pink-500', 'bg-rose-500', 'bg-gray-500', 'bg-slate-500', 'bg-zinc-500'
+  { class: 'bg-red-500', name: 'Qizil' },
+  { class: 'bg-orange-500', name: 'To\'q sariq' },
+  { class: 'bg-amber-500', name: 'Amber' },
+  { class: 'bg-yellow-500', name: 'Sariq' },
+  { class: 'bg-lime-500', name: 'Choynak' },
+  { class: 'bg-green-500', name: 'Yashil' },
+  { class: 'bg-emerald-500', name: 'Zumrad' },
+  { class: 'bg-teal-500', name: 'Ko\'k-yashil' },
+  { class: 'bg-cyan-500', name: 'Ko\'k' },
+  { class: 'bg-sky-500', name: 'Osmon ko\'k' },
+  { class: 'bg-blue-500', name: 'Ko\'k' },
+  { class: 'bg-indigo-500', name: 'Indigo' },
+  { class: 'bg-violet-500', name: 'Binafsha' },
+  { class: 'bg-purple-500', name: 'Binafsha' },
+  { class: 'bg-fuchsia-500', name: 'Fuchsia' },
+  { class: 'bg-pink-500', name: 'Pushti' },
+  { class: 'bg-rose-500', name: 'Atirgul' },
+  { class: 'bg-gray-500', name: 'Kulrang' },
+  { class: 'bg-slate-500', name: 'Kulrang' },
+  { class: 'bg-zinc-500', name: 'Rux' },
+  { class: 'bg-black-500', name: 'Qora' },
+  { class: 'bg-white-500', name: 'Oq' }
 ];
 
 // Asosiy boshqaruv klaviaturasi
@@ -297,13 +315,13 @@ bot.on('message', async (msg) => {
       case 'category_icon':
         data.icon = text;
         userState[chatId].step = 'category_color';
-        // Ranglarni inline keyboard bilan ko'rsatish
+        // Ranglarni inline keyboard bilan ko'rsatish (o'zbekcha nomlar bilan)
         const colorKeyboard = {
           reply_markup: {
-            inline_keyboard: tailwindColors.map(color => [{ text: color, callback_data: `category_color_${color}` }])
+            inline_keyboard: tailwindColors.map(color => [{ text: color.name, callback_data: `category_color_${color.class}` }])
           }
         };
-        bot.sendMessage(chatId, "3/3. Rangni tanlang (Tailwind CSS rangi):", colorKeyboard);
+        bot.sendMessage(chatId, "3/3. Rangni tanlang (o'zbekcha nomlar):", colorKeyboard);
         break;
 
       // category_color text orqali emas, callback orqali
@@ -484,10 +502,11 @@ bot.on('callback_query', async (callbackQuery) => {
 
   // --- Kategoriya rang tanlandi (category_color_COLOR) ---
   if (data.startsWith('category_color_')) {
-    const color = data.replace('category_color_', '');
-    if (tailwindColors.includes(color)) {
+    const colorClass = data.replace('category_color_', '');
+    const colorObj = tailwindColors.find(c => c.class === colorClass);
+    if (colorObj) {
       let stateData = userState[chatId].data;
-      stateData.color = color;
+      stateData.color = colorClass; // Tailwind klassini saqlash
 
       const newId = await getNextId('categories');
       if (newId === -1) {
@@ -503,7 +522,7 @@ bot.on('callback_query', async (callbackQuery) => {
           `✅ Kategoriya **muvaffaqiyatli qo'shildi!**\n\n` +
           `**Nomi:** ${newCategory.name}\n` +
           `**Ikonka:** ${newCategory.icon}\n` +
-          `**Rang:** ${newCategory.color}`, 
+          `**Rang:** ${colorObj.name} (${newCategory.color})`, 
           mainKeyboard
         );
       } catch (error) {
@@ -511,7 +530,7 @@ bot.on('callback_query', async (callbackQuery) => {
         bot.sendMessage(chatId, "❌ Kategoriya qo'shishda xato yuz berdi!");
       }
       userState[chatId].step = 'none';
-      bot.answerCallbackQuery(callbackQuery.id, { text: `Rang tanlandi: ${color}` });
+      bot.answerCallbackQuery(callbackQuery.id, { text: `Rang tanlandi: ${colorObj.name}` });
     } else {
       bot.answerCallbackQuery(callbackQuery.id, { text: "Noto'g'ri rang!" });
     }
