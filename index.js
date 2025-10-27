@@ -8,7 +8,7 @@ const fs = require('fs'); // Vaqtinchalik file uchun
 
 // Bot va Admin ma'lumotlari
 const TOKEN = '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
-const ADMIN_CHAT_ID = 7122472578; // Admin chat ID
+const ADMIN_CHAT_ID = 5761225998; // Admin chat ID
 const IMGBB_API_KEY = '38fcdca0b624f0123f15491175c8bd78'; // ImgBB API key
 
 // Firebase'ni sozlash
