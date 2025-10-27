@@ -2,10 +2,14 @@
 
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs'); // Vaqtinchalik file uchun
 
 // Bot va Admin ma'lumotlari
 const TOKEN = '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
 const ADMIN_CHAT_ID = 7122472578; // Admin chat ID
+const IMGBB_API_KEY = '38fcdca0b624f0123f15491175c8bd78'; // ImgBB API key
 
 // Firebase'ni sozlash
 const serviceAccount = require('./serviceAccountKey.json');
@@ -19,6 +23,14 @@ const db = admin.firestore();
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 const userState = {}; // Foydalanuvchi holatini (step, data) saqlash
+
+// Tailwind ranglari ro'yxati (kategoriya uchun)
+const tailwindColors = [
+  'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500', 'bg-lime-500',
+  'bg-green-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500',
+  'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500',
+  'bg-pink-500', 'bg-rose-500', 'bg-gray-500', 'bg-slate-500', 'bg-zinc-500'
+];
 
 // Asosiy boshqaruv klaviaturasi
 const mainKeyboard = {
@@ -48,10 +60,52 @@ async function getNextId(collectionName) {
   }
 }
 
+/**
+ * Rasmni ImgBB'ga yuklash va URL qaytarish.
+ * @param {string} fileId - Telegram file ID.
+ * @returns {Promise<string|null>} - Yuklangan rasm URL yoki null (xato bo'lsa).
+ */
+async function uploadToImgBB(fileId) {
+  try {
+    // Telegram'dan file path olish
+    const file = await bot.getFile(fileId);
+    const fileUrl = `https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`;
+
+    // File'ni download qilish (buffer)
+    const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+    const buffer = Buffer.from(response.data);
+
+    // FormData yaratish
+    const form = new FormData();
+    form.append('key', IMGBB_API_KEY);
+    form.append('image', buffer, {
+      filename: 'product_image.jpg',
+      contentType: 'image/jpeg'
+    });
+
+    // ImgBB'ga yuklash
+    const uploadResponse = await axios.post('https://api.imgbb.com/1/upload', form, {
+      headers: {
+        ...form.getHeaders()
+      }
+    });
+
+    if (uploadResponse.data.success) {
+      return uploadResponse.data.data.url; // To'liq URL
+    } else {
+      throw new Error('ImgBB yuklash muvaffaqiyatsiz');
+    }
+  } catch (error) {
+    console.error('ImgBB yuklashda xato:', error);
+    return null;
+  }
+}
+
 // Asosiy message handler
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
+  const photo = msg.photo; // Rasm uchun
 
   // Faqat admin uchun ruxsat
   if (chatId != ADMIN_CHAT_ID) {
@@ -145,18 +199,13 @@ bot.on('message', async (msg) => {
         }
         data.category = text;
         userState[chatId].step = 'product_image';
-        bot.sendMessage(chatId, "6/9. Rasm URL (http yoki https bilan boshlanishi kerak):");
+        bot.sendMessage(chatId, "6/9. Rasm yuboring (photo formatida):");
         break;
 
       case 'product_image':
-        if (!text.startsWith('http')) {
-          bot.sendMessage(chatId, "Rasm URL manzili 'http' yoki 'https' bilan boshlanishi kerak!");
-          return;
-        }
-        data.image = text;
-        userState[chatId].step = 'product_description';
-        bot.sendMessage(chatId, "7/9. Tavsif (qisqa ma'lumot):");
-        break;
+        // Bu bosqichda text emas, photo kutish kerak. Shuning uchun bu yerda hech narsa qilmaymiz
+        // Photo handler'da ishlov beriladi
+        return;
 
       case 'product_description':
         data.description = text;
@@ -196,7 +245,7 @@ bot.on('message', async (msg) => {
           pricePiece: data.pricePiece,
           discount: data.discount,
           category: data.category,
-          image: data.image,
+          image: data.image, // ImgBB'dan olingan URL
           description: data.description,
           boxCapacity: data.boxCapacity,
           stock: data.stock,
@@ -248,34 +297,16 @@ bot.on('message', async (msg) => {
       case 'category_icon':
         data.icon = text;
         userState[chatId].step = 'category_color';
-        bot.sendMessage(chatId, "3/3. Rang (Tailwind CSS rangi, mas: bg-green-500):");
+        // Ranglarni inline keyboard bilan ko'rsatish
+        const colorKeyboard = {
+          reply_markup: {
+            inline_keyboard: tailwindColors.map(color => [{ text: color, callback_data: `category_color_${color}` }])
+          }
+        };
+        bot.sendMessage(chatId, "3/3. Rangni tanlang (Tailwind CSS rangi):", colorKeyboard);
         break;
 
-      case 'category_color':
-        data.color = text;
-        const newId = await getNextId('categories');
-         if (newId === -1) {
-            bot.sendMessage(chatId, "❌ Kategoriya ID sini olishda xato yuz berdi!", mainKeyboard);
-            userState[chatId].step = 'none';
-            return;
-        }
-        
-        const newCategory = { id: newId, name: data.name, icon: data.icon, color: data.color };
-        try {
-          await db.collection('categories').doc(String(newId)).set(newCategory);
-          bot.sendMessage(chatId, 
-            `✅ Kategoriya **muvaffaqiyatli qo'shildi!**\n\n` +
-            `**Nomi:** ${newCategory.name}\n` +
-            `**Ikonka:** ${newCategory.icon}\n` +
-            `**Rang:** ${newCategory.color}`, 
-            mainKeyboard
-          );
-        } catch (error) {
-          console.error("Kategoriya qo'shishda xato:", error);
-          bot.sendMessage(chatId, "❌ Kategoriya qo'shishda xato yuz berdi!");
-        }
-        userState[chatId].step = 'none';
-        break;
+      // category_color text orqali emas, callback orqali
     }
     userState[chatId].data = data;
     return;
@@ -416,6 +447,30 @@ bot.on('message', async (msg) => {
   }
 });
 
+// Photo handler (rasm yuklash uchun)
+bot.on('photo', async (msg) => {
+  const chatId = msg.chat.id;
+  const fileId = msg.photo[msg.photo.length - 1].file_id; // Eng yuqori sifatdagi rasm
+
+  if (chatId != ADMIN_CHAT_ID) return;
+
+  if (userState[chatId] && userState[chatId].step === 'product_image') {
+    let data = userState[chatId].data;
+
+    bot.sendMessage(chatId, "Rasm yuklanmoqda... ⏳");
+
+    const imageUrl = await uploadToImgBB(fileId);
+    if (imageUrl) {
+      data.image = imageUrl;
+      userState[chatId].step = 'product_description';
+      bot.sendMessage(chatId, `✅ Rasm yuklandi: ${imageUrl}\n\n7/9. Tavsif (qisqa ma'lumot):`);
+    } else {
+      bot.sendMessage(chatId, "❌ Rasm yuklashda xato yuz berdi! Qaytadan urinib ko'ring.");
+    }
+    userState[chatId].data = data;
+  }
+});
+
 // Callback query handler (inline tugmalar uchun)
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
@@ -424,6 +479,42 @@ bot.on('callback_query', async (callbackQuery) => {
   // Xavfsizlik tekshiruvi
   if (!data || chatId != ADMIN_CHAT_ID) {
     bot.answerCallbackQuery(callbackQuery.id, { text: "Ruxsat yo'q!" });
+    return;
+  }
+
+  // --- Kategoriya rang tanlandi (category_color_COLOR) ---
+  if (data.startsWith('category_color_')) {
+    const color = data.replace('category_color_', '');
+    if (tailwindColors.includes(color)) {
+      let stateData = userState[chatId].data;
+      stateData.color = color;
+
+      const newId = await getNextId('categories');
+      if (newId === -1) {
+        bot.sendMessage(chatId, "❌ Kategoriya ID sini olishda xato yuz berdi!", mainKeyboard);
+        userState[chatId].step = 'none';
+        return;
+      }
+      
+      const newCategory = { id: newId, name: stateData.name, icon: stateData.icon, color: stateData.color };
+      try {
+        await db.collection('categories').doc(String(newId)).set(newCategory);
+        bot.sendMessage(chatId, 
+          `✅ Kategoriya **muvaffaqiyatli qo'shildi!**\n\n` +
+          `**Nomi:** ${newCategory.name}\n` +
+          `**Ikonka:** ${newCategory.icon}\n` +
+          `**Rang:** ${newCategory.color}`, 
+          mainKeyboard
+        );
+      } catch (error) {
+        console.error("Kategoriya qo'shishda xato:", error);
+        bot.sendMessage(chatId, "❌ Kategoriya qo'shishda xato yuz berdi!");
+      }
+      userState[chatId].step = 'none';
+      bot.answerCallbackQuery(callbackQuery.id, { text: `Rang tanlandi: ${color}` });
+    } else {
+      bot.answerCallbackQuery(callbackQuery.id, { text: "Noto'g'ri rang!" });
+    }
     return;
   }
 
