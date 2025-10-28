@@ -8,7 +8,7 @@ const fs = require('fs'); // Vaqtinchalik file uchun
 
 // Bot va Admin ma'lumotlari
 const TOKEN = '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
-const ADMIN_CHAT_ID = 5761225998; // Admin chat ID
+const admins = [5761225998, 7122472578]; // Admin chat ID
 const IMGBB_API_KEY = '38fcdca0b624f0123f15491175c8bd78'; // ImgBB API key
 
 // Firebase'ni sozlash
@@ -126,7 +126,7 @@ bot.on('message', async (msg) => {
   const photo = msg.photo; // Rasm uchun
 
   // Faqat admin uchun ruxsat
-  if (chatId != ADMIN_CHAT_ID) {
+  if (!admins.includes(chatId)) {
     bot.sendMessage(chatId, "Bu bot faqat administratorlar uchun mo'ljallangan.");
     return;
   }
@@ -470,7 +470,7 @@ bot.on('photo', async (msg) => {
   const chatId = msg.chat.id;
   const fileId = msg.photo[msg.photo.length - 1].file_id; // Eng yuqori sifatdagi rasm
 
-  if (chatId != ADMIN_CHAT_ID) return;
+  if (!admins.includes(chatId)) return;
 
   if (userState[chatId] && userState[chatId].step === 'product_image') {
     let data = userState[chatId].data;
@@ -495,7 +495,7 @@ bot.on('callback_query', async (callbackQuery) => {
   const data = callbackQuery.data;
 
   // Xavfsizlik tekshiruvi
-  if (!data || chatId != ADMIN_CHAT_ID) {
+  if (!data || !admins.includes(chatId)) {
     bot.answerCallbackQuery(callbackQuery.id, { text: "Ruxsat yo'q!" });
     return;
   }
