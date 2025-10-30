@@ -4,15 +4,18 @@ const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 const axios = require('axios');
 const FormData = require('form-data');
-const fs = require('fs'); // Vaqtinchalik file uchun
 
 // Bot va Admin ma'lumotlari
 const TOKEN = '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
 const admins = [5761225998, 7122472578]; // Admin chat ID
 const IMGBB_API_KEY = '38fcdca0b624f0123f15491175c8bd78'; // ImgBB API key
 
-// Firebase'ni sozlash
-const serviceAccount = require('./serviceAccountKey.json');
+// Firebase'ni sozlash (Railway uchun env var dan foydalanish)
+if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+  console.error('❌ FIREBASE_SERVICE_ACCOUNT env variable topilmadi! Railway'da qo\'shing.');
+  process.exit(1);
+}
+const serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString());
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
